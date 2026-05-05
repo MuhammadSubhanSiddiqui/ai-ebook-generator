@@ -1,0 +1,14 @@
+# Root level gitignore
+# This is a catch-all for files at project root
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE files
+.vscode
+.idea
+
+# Environment files (should also be ignored in backend/.gitignore)
+.env
+.env.local
