@@ -166,11 +166,11 @@ The application will run on `http://localhost:5173` (default Vite port)
 ### eBook Viewer
 ![eBook Viewer](./Screenshot%20(5).png)
 
-### Pricing Page
-![Pricing Page](./Screenshot%20(6).png)
+### eBook editor Page
+![ebook editor Page](./Screenshot%20(6).png)
 
-### Features Section
-![Features](./Screenshot%20(8).png)
+### pdf review Section
+![pdf review](./Screenshot%20(8).png)
 
 ## 🔐 Authentication
 
