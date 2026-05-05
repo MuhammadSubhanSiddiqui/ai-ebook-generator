@@ -253,8 +253,3 @@ Feel free to fork this project and submit pull requests for any improvements.
 ## 📞 Support
 
 For issues, questions, or suggestions, please create an issue in the repository.
-
----
-
-**Created for**: Full Stack Web Development Lab
-**Last Updated**: May 2026
