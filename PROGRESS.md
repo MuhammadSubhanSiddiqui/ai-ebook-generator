@@ -24,6 +24,7 @@ Live status of the production-hardening effort. ✅ = done, ⏳ = in progress, �
 - [x] Health endpoint `/health`
 - [x] Request logging (morgan)
 - [x] Removed committed debug scripts
+- [x] Removed unused multer dependency
 
 ## Backend Refactor
 - [x] Validator layer (`validators/`)
@@ -34,26 +35,32 @@ Live status of the production-hardening effort. ✅ = done, ⏳ = in progress, �
 - [ ] Retry/timeout around Gemini API calls
 
 ## Frontend Refactor
-- [ ] Centralized API client (`src/api/`)
-- [ ] Auth token handling / 401 redirect
-- [ ] Loading skeletons
-- [ ] Error boundaries
-- [ ] Form validation UX
-- [ ] Remove dead `PricingPage.jsx`
+- [x] Centralized API client (`src/api/`)
+- [x] AuthContext for auth state management
+- [x] Auth token handling / 401 redirect
+- [x] Loading states throughout
+- [x] Error handling in all pages
+- [x] Form validation UX
+- [x] Remove dead `PricingPage.jsx`
 - [ ] Remove broken hero "Watch How It Works" button
 - [ ] Improve EbookViewer polling/cancellation
 
 ## Cleanup
 - [x] Removed debug scripts (backend)
-- [ ] Remove unused `react.svg` / `vite.svg` assets
-- [ ] Remove dead `PricingPage.jsx`
-- [ ] Verify dependency usage
+- [x] Removed unused multer dependency
+- [x] Removed dead PricingPage.jsx
+- [x] Removed unused Features.jsx
+- [ ] Remove unused SVG assets (react.svg, vite.svg)
+- [ ] Verify all dependencies are used
 
 ## Testing
 - [ ] Jest + supertest unit/integration tests
+- [ ] E2E tests with Playwright/Cypress
 - [ ] CI pipeline (GitHub Actions)
 
 ## Deployment
 - [x] DEPLOYMENT.md guide
 - [ ] Dockerfile
 - [ ] Environment var wiring for Vercel/Render
+- [ ] Health check monitoring
+- [ ] Database backup setup
