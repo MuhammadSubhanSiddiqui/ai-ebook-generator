@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Book, Plus, Clock, MoreVertical, Search, X } from 'lucide-react';
 import Navbar from '../components/Navbar';
-import { fetchEbooks, createEbook, deleteEbook } from '../api';
+import { fetchEbooks as apiFetchEbooks, createEbook, deleteEbook } from '../api';
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -16,9 +16,9 @@ const Dashboard = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('All Status');
 
-  const fetchEbooks = async () => {
+  const loadEbooks = async () => {
     try {
-      const data = await fetchEbooks();
+      const data = await apiFetchEbooks();
       setEbooks(data);
     } catch (error) {
       console.error('Error fetching ebooks:', error);
@@ -28,8 +28,18 @@ const Dashboard = () => {
   };
 
   useEffect(() => {
-    fetchEbooks();
+    loadEbooks();
   }, []);
+
+  useEffect(() => {
+    const hasGenerating = ebooks.some((ebook) => ebook.status === 'generating');
+    if (hasGenerating) {
+      const interval = setInterval(() => {
+        loadEbooks();
+      }, 3000);
+      return () => clearInterval(interval);
+    }
+  }, [ebooks]);
 
   const handleDeleteEbook = async (id) => {
     if (!window.confirm("Are you sure you want to delete this ebook?")) return;
@@ -57,7 +67,7 @@ const Dashboard = () => {
       setShowModal(false);
       setNewBookTitle('');
       setNewBookPrompt('');
-      fetchEbooks(); // Refresh list
+      loadEbooks(); // Refresh list
     } catch (error) {
       console.error('Error creating ebook:', error);
     } finally {
@@ -77,39 +87,40 @@ const Dashboard = () => {
     <div className="min-h-screen bg-gray-50">
       <Navbar />
 
-      <main className="container mx-auto px-4 py-12 md:px-6">
+      <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
         {/* Header Section */}
-        <div className="mb-10 flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
+        <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">My Library</h1>
+            <h1 className="text-2xl font-bold text-gray-900 sm:text-3xl">My Library</h1>
             <p className="mt-1 text-gray-500">Manage your collection of AI-generated ebooks</p>
           </div>
           <button
             onClick={() => setShowModal(true)}
-            className="flex items-center justify-center gap-2 rounded-full bg-indigo-600 px-6 py-3 text-sm font-bold text-white shadow-lg hover:bg-indigo-700 hover:shadow-xl transition-all transform hover:-translate-y-0.5"
+            className="flex items-center justify-center gap-2 rounded-full bg-indigo-600 px-4 py-2.5 sm:px-6 sm:py-3 text-sm font-bold text-white shadow-lg hover:bg-indigo-700 hover:shadow-xl transition-all"
           >
-            <Plus className="h-5 w-5" />
-            Create New eBook
+            <Plus className="h-4 w-4 sm:h-5 sm:w-5" />
+            <span className="hidden sm:inline">Create New eBook</span>
+            <span className="sm:hidden">New eBook</span>
           </button>
         </div>
 
         {/* Search and Filter */}
-        <div className="mb-10 flex flex-col sm:flex-row items-center gap-4 rounded-2xl bg-white p-2 shadow-sm border border-gray-100">
+        <div className="mb-8 flex flex-col gap-3 sm:flex-row sm:items-center rounded-2xl bg-white p-2 shadow-sm border border-gray-100">
           <div className="relative flex-1 w-full">
-            <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" />
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
             <input
               type="text"
               placeholder="Search your library..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full rounded-xl border-none bg-transparent py-3 pl-12 pr-4 text-gray-900 placeholder-gray-400 focus:ring-0"
+              className="w-full rounded-xl border-none bg-transparent py-2.5 pl-9 pr-4 text-sm text-gray-900 placeholder-gray-400 focus:ring-0"
             />
           </div>
-          <div className="h-8 w-px bg-gray-200 hidden sm:block"></div>
+          <div className="h-px w-full bg-gray-200 sm:h-8 sm:w-px"></div>
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="w-full sm:w-auto rounded-xl border-none bg-transparent px-4 py-3 text-sm font-medium text-gray-600 focus:ring-0 cursor-pointer hover:text-indigo-600"
+            className="w-full sm:w-auto rounded-xl border-none bg-transparent px-3 py-2.5 text-sm font-medium text-gray-600 focus:ring-0 cursor-pointer hover:text-indigo-600"
           >
             <option>All Status</option>
             <option>Completed</option>
@@ -124,7 +135,7 @@ const Dashboard = () => {
             <div className="h-10 w-10 animate-spin rounded-full border-4 border-indigo-600 border-t-transparent"></div>
           </div>
         ) : filteredEbooks.length > 0 ? (
-          <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          <div className="grid gap-6 sm:gap-8 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {filteredEbooks.map((ebook) => (
               <div key={ebook._id} className="group relative flex flex-col overflow-hidden rounded-2xl bg-white shadow-sm transition-all duration-300 hover:shadow-xl hover:-translate-y-1 border border-gray-100">
                 {/* Cover Placeholder */}
@@ -187,7 +198,7 @@ const Dashboard = () => {
             ))}
           </div>
         ) : (
-          <div className="flex flex-col items-center justify-center rounded-3xl border-2 border-dashed border-gray-200 bg-white/50 py-24 text-center">
+          <div className="flex flex-col items-center justify-center rounded-3xl border-2 border-dashed border-gray-200 bg-white/50 py-16 px-4 text-center sm:py-24">
             <div className="mb-6 rounded-full bg-indigo-50 p-6">
               <Book className="h-10 w-10 text-indigo-400" />
             </div>

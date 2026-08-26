@@ -5,7 +5,7 @@ import { jsPDF } from "jspdf";
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { fetchEbook, updateEbook } from '../api';
+import { fetchEbook as apiFetchEbook, updateEbook } from '../api';
 
 const SortableItem = ({ id, chapter, index }) => {
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id });
@@ -51,13 +51,18 @@ const EbookViewer = () => {
     })
   );
 
+  const fetchEbookData = async () => {
+    const data = await apiFetchEbook(id);
+    if (!data) throw new Error('No data returned');
+    setEbook(data);
+    setChapters(data.content || []);
+    return data;
+  };
+
   const fetchEbook = async (forceRefresh = false) => {
     if (forceRefresh) setRefreshing(true);
-
     try {
-      const data = await fetchEbook(id);
-      setEbook(data);
-      setChapters(data.content || []);
+      const data = await fetchEbookData();
       setError(null);
 
       // Stop polling if completed or failed
@@ -127,6 +132,7 @@ const EbookViewer = () => {
 
   const openSettings = () => {
     setChapters(ebook.content || []);
+    setEditTitle(ebook.title); // Initialize with current title
     const currentContent = ebook.content[currentPage - 1];
     if (currentContent) {
       setEditChapterTitle(currentContent.title);
@@ -152,16 +158,35 @@ const EbookViewer = () => {
     setError('');
 
     try {
+      // Apply the edited chapter title/text onto the chapter currently being edited.
+      // We identify it by matching the chapter that was open when settings opened.
+      const originalChapter = ebook.content[currentPage - 1];
+      let updatedContent = [...chapters];
+
+      if (originalChapter) {
+        const targetIndex = updatedContent.findIndex(
+          (c) => c._id === originalChapter._id || c.title === originalChapter.title
+        );
+        if (targetIndex !== -1) {
+          updatedContent[targetIndex] = {
+            ...updatedContent[targetIndex],
+            title: editChapterTitle,
+            text: editChapterText,
+          };
+        }
+      }
+
       const updatedEbook = await updateEbook(id, {
         title: editTitle,
-        content: chapters
+        content: updatedContent,
       });
 
       setEbook(updatedEbook);
       setChapters(updatedEbook.content);
       setShowSettings(false);
     } catch (err) {
-      setError(err.message || 'Failed to update ebook');
+      console.error('Update error:', err);
+      setError(err.payload?.message || err.message || 'Failed to update ebook');
     }
   };
 
@@ -222,18 +247,18 @@ const EbookViewer = () => {
   return (
     <div className="flex h-screen flex-col bg-gray-100">
       {/* Top Bar */}
-      <header className="flex h-16 items-center justify-between border-b border-gray-200 bg-white px-4 shadow-sm">
-        <div className="flex items-center gap-4">
-          <Link to="/dashboard" className="rounded-full p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-900">
+      <header className="flex h-14 sm:h-16 items-center justify-between border-b border-gray-200 bg-white px-3 sm:px-4 shadow-sm">
+        <div className="flex items-center gap-2 sm:gap-4 min-w-0">
+          <Link to="/dashboard" className="rounded-full p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-900 shrink-0">
             <ArrowLeft className="h-5 w-5" />
           </Link>
-          <div>
-            <h1 className="text-lg font-semibold text-gray-900">{ebook.title}</h1>
+          <div className="min-w-0">
+            <h1 className="truncate text-base sm:text-lg font-semibold text-gray-900">{ebook.title}</h1>
             <p className="text-xs text-gray-500">Page {currentPage} of {ebook.totalPages}</p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1 sm:gap-2 shrink-0">
           <button
             onClick={handleDownloadPDF}
             className="rounded-full p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-900"
@@ -293,8 +318,8 @@ const EbookViewer = () => {
 
       {/* Edit Modal */}
       {showSettings && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-          <div className="w-full max-w-2xl rounded-2xl bg-white p-8 shadow-2xl max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-2 sm:p-4">
+          <div className="w-full max-w-2xl rounded-2xl bg-white p-4 sm:p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
             <div className="mb-6 flex items-center justify-between">
               <h2 className="text-2xl font-bold text-gray-900">Edit eBook Content</h2>
               <button
@@ -318,8 +343,8 @@ const EbookViewer = () => {
 
               {/* Chapter Reordering Section */}
               <div>
-                <h3 className="mb-3 text-sm font-medium text-gray-700">Organize Chapters</h3>
-                <div className="max-h-48 overflow-y-auto rounded-xl border border-gray-200 p-2">
+                <h3 className="mb-2 sm:mb-3 text-sm font-medium text-gray-700">Organize Chapters</h3>
+                <div className="max-h-40 sm:max-h-48 overflow-y-auto rounded-xl border border-gray-200 p-1 sm:p-2">
                   <DndContext
                     sensors={sensors}
                     collisionDetection={closestCenter}
@@ -337,25 +362,25 @@ const EbookViewer = () => {
                 </div>
               </div>
 
-              <div className="border-t border-gray-100 pt-6">
-                <h3 className="mb-4 text-lg font-semibold text-gray-900">Edit Current Page (Page {currentPage})</h3>
+              <div className="border-t border-gray-100 pt-4 sm:pt-6">
+                <h3 className="mb-3 sm:mb-4 text-base sm:text-lg font-semibold text-gray-900">Edit Current Page (Page {currentPage})</h3>
 
-                <div className="mb-4">
-                  <label className="mb-2 block text-sm font-medium text-gray-700">Chapter Title</label>
+                <div className="mb-3 sm:mb-4">
+                  <label className="mb-1 sm:mb-2 block text-sm font-medium text-gray-700">Chapter Title</label>
                   <input
                     type="text"
                     value={editChapterTitle}
                     onChange={(e) => setEditChapterTitle(e.target.value)}
-                    className="w-full rounded-xl border border-gray-200 px-4 py-3 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 outline-none"
+                    className="w-full rounded-xl border border-gray-200 px-3 sm:px-4 py-2 sm:py-3 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 outline-none"
                   />
                 </div>
 
                 <div>
-                  <label className="mb-2 block text-sm font-medium text-gray-700">Content</label>
+                  <label className="mb-1 sm:mb-2 block text-sm font-medium text-gray-700">Content</label>
                   <textarea
                     value={editChapterText}
                     onChange={(e) => setEditChapterText(e.target.value)}
-                    className="h-64 w-full rounded-xl border border-gray-200 px-4 py-3 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 outline-none resize-none"
+                    className="h-40 sm:h-64 w-full rounded-xl border border-gray-200 px-3 sm:px-4 py-2 sm:py-3 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 outline-none resize-none"
                   />
                 </div>
               </div>

@@ -21,7 +21,10 @@ router
 router
   .route('/:id')
   .get(protect, getEbookById)
-  .put(protect, validate(updateEbookSchema), updateEbook)
+  .put(protect, asyncHandler(async (req, res) => {
+    console.log('PUT /api/ebooks/:id body:', JSON.stringify(req.body, null, 2));
+    return validate(updateEbookSchema)(req, res, () => updateEbook(req, res));
+  }))
   .delete(protect, deleteEbook);
 
 export default router;

@@ -55,12 +55,18 @@ const Features = () => {
 
         <div className="grid gap-8 md:grid-cols-2 lg:grid-cols-3">
           {features.map((feature, index) => (
-            <div key={index} className="rounded-xl bg-white p-6 shadow-sm hover:shadow-md transition-shadow">
-              <div className={`mb-4 inline-flex h-12 w-12 items-center justify-center rounded-lg ${feature.color}`}>
+            <div
+              key={index}
+              className="group relative rounded-2xl bg-white p-6 sm:p-8 shadow-sm hover:shadow-xl transition-all duration-300 hover:-translate-y-1.5 border border-gray-100/80 hover:border-indigo-100 overflow-hidden"
+            >
+              {/* Background ambient decoration */}
+              <div className="absolute -right-16 -top-16 h-32 w-32 rounded-full bg-indigo-50/20 group-hover:bg-indigo-50/70 blur-xl transition-all duration-500"></div>
+
+              <div className={`mb-5 inline-flex h-12 w-12 items-center justify-center rounded-xl ${feature.color} transform group-hover:scale-110 group-hover:rotate-3 transition-all duration-300 shadow-md`}>
                 {feature.icon}
               </div>
-              <h3 className="mb-2 text-xl font-bold text-gray-900">{feature.title}</h3>
-              <p className="text-gray-600">{feature.description}</p>
+              <h3 className="mb-3 text-xl font-bold text-gray-900 group-hover:text-indigo-600 transition-colors duration-200">{feature.title}</h3>
+              <p className="text-gray-600 text-sm sm:text-base leading-relaxed">{feature.description}</p>
             </div>
           ))}
         </div>
