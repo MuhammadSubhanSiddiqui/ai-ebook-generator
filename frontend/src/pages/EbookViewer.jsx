@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Download, Settings, ChevronLeft, ChevronRight, X, Save, GripVertical } from 'lucide-react';
+import { ArrowLeft, Download, Settings, ChevronLeft, ChevronRight, X, Save, GripVertical, AlertTriangle, RefreshCw } from 'lucide-react';
 import { jsPDF } from "jspdf";
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
@@ -31,7 +31,6 @@ const SortableItem = ({ id, chapter, index }) => {
 const EbookViewer = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const pollingRef = useRef(null);
 
   const [ebook, setEbook] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -43,6 +42,11 @@ const EbookViewer = () => {
   const [chapters, setChapters] = useState([]);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
+  const [isTakingLonger, setIsTakingLonger] = useState(false);
+
+  const pollTimeoutRef = useRef(null);
+  const pollAttemptRef = useRef(0);
+  const maxPollAttempts = 15;
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -51,25 +55,50 @@ const EbookViewer = () => {
     })
   );
 
-  const fetchEbookData = async () => {
+  const fetchEbookData = useCallback(async () => {
     const data = await apiFetchEbook(id);
-    if (!data) throw new Error('No data returned');
+    if (!data) throw new Error('No data returned from server');
     setEbook(data);
     setChapters(data.content || []);
     return data;
-  };
+  }, [id]);
 
-  const fetchEbook = async (forceRefresh = false) => {
-    if (forceRefresh) setRefreshing(true);
+  const pollEbook = useCallback(async (isManual = false) => {
+    if (isManual) {
+      setRefreshing(true);
+    }
+
     try {
       const data = await fetchEbookData();
       setError(null);
 
       // Stop polling if completed or failed
-      if (data.status !== 'generating') {
-        if (pollingRef.current) {
-          clearInterval(pollingRef.current);
-          pollingRef.current = null;
+      if (data.status === 'completed' || data.status === 'failed') {
+        if (pollTimeoutRef.current) {
+          clearTimeout(pollTimeoutRef.current);
+          pollTimeoutRef.current = null;
+        }
+        setIsTakingLonger(false);
+        setLoading(false);
+        setRefreshing(false);
+        return;
+      }
+
+      // If still generating and not exceeded max attempts
+      pollAttemptRef.current += 1;
+      if (pollAttemptRef.current >= maxPollAttempts) {
+        setIsTakingLonger(true);
+        if (pollTimeoutRef.current) {
+          clearTimeout(pollTimeoutRef.current);
+          pollTimeoutRef.current = null;
+        }
+      } else {
+        // Schedule next poll with exponential backoff if tab is visible
+        const nextDelay = Math.min(3000 * Math.pow(1.2, pollAttemptRef.current), 10000);
+        if (document.visibilityState !== 'hidden') {
+          pollTimeoutRef.current = setTimeout(() => {
+            pollEbook(false);
+          }, nextDelay);
         }
       }
     } catch (err) {
@@ -79,60 +108,213 @@ const EbookViewer = () => {
       setLoading(false);
       setRefreshing(false);
     }
-  };
+  }, [fetchEbookData]);
 
+  // Initial load and visibility-aware polling
   useEffect(() => {
-    fetchEbook(true);
+    pollAttemptRef.current = 0;
+    setIsTakingLonger(false);
+    pollEbook(false);
 
-    // Poll every 5 seconds while generating
-    pollingRef.current = setInterval(() => {
-      fetchEbook();
-    }, 5000);
-
-    return () => {
-      if (pollingRef.current) {
-        clearInterval(pollingRef.current);
-        pollingRef.current = null;
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        // Tab resumed - check status immediately if still generating
+        if (ebook?.status === 'generating' && !pollTimeoutRef.current && !isTakingLonger) {
+          pollEbook(false);
+        }
+      } else {
+        // Tab hidden - pause active timeout
+        if (pollTimeoutRef.current) {
+          clearTimeout(pollTimeoutRef.current);
+          pollTimeoutRef.current = null;
+        }
       }
     };
-  }, [id]);
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      if (pollTimeoutRef.current) {
+        clearTimeout(pollTimeoutRef.current);
+      }
+    };
+  }, [id, pollEbook]);
+
+  // Helper to extract RGB from coverColor string
+  const getCoverRGB = (coverClass) => {
+    if (!coverClass) return [79, 70, 229]; // indigo-600 default
+    if (coverClass.includes('purple')) return [147, 51, 234];
+    if (coverClass.includes('blue')) return [37, 99, 235];
+    if (coverClass.includes('green')) return [16, 185, 129];
+    if (coverClass.includes('red')) return [239, 68, 68];
+    if (coverClass.includes('orange')) return [249, 115, 22];
+    return [79, 70, 229];
+  };
 
   const handleDownloadPDF = () => {
-    if (!ebook) return;
+    if (!ebook || !ebook.content || ebook.content.length === 0) return;
 
-    const doc = new jsPDF();
+    const doc = new jsPDF({
+      orientation: 'portrait',
+      unit: 'mm',
+      format: 'a4',
+    });
 
-    // Title Page
-    doc.setFontSize(24);
-    doc.text(ebook.title, 20, 40);
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const margin = 20;
+    const contentWidth = pageWidth - margin * 2;
+    const [r, g, b] = getCoverRGB(ebook.coverColor);
 
+    // ==========================================
+    // 1. STYLED COVER PAGE
+    // ==========================================
+    doc.setFillColor(r, g, b);
+    doc.rect(0, 0, pageWidth, 110, 'F');
+
+    // Title on cover
+    doc.setTextColor(255, 255, 255);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(26);
+    const titleLines = doc.splitTextToSize(ebook.title, contentWidth);
+    doc.text(titleLines, margin, 50);
+
+    // Subtitle badge on cover
+    doc.setFontSize(11);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(230, 230, 255);
+    doc.text("AI GENERATED EBOOK", margin, 35);
+
+    // Cover Description box below header
+    doc.setTextColor(55, 65, 81);
     doc.setFontSize(12);
-    const descLines = doc.splitTextToSize(ebook.description, 170);
-    doc.text(descLines, 20, 60);
+    doc.setFont('helvetica', 'italic');
+    const descLines = doc.splitTextToSize(ebook.description || 'No description provided.', contentWidth);
+    doc.text(descLines, margin, 130);
 
+    // Author & metadata bottom card
+    doc.setDrawColor(229, 231, 235);
+    doc.line(margin, pageHeight - 45, pageWidth - margin, pageHeight - 45);
+
+    doc.setFont('helvetica', 'normal');
     doc.setFontSize(10);
-    doc.text(`Generated by AI eBook Creator`, 20, 280);
+    doc.setTextColor(107, 114, 128);
+    doc.text(`Author: ${ebook.author || 'AI eBook Creator'}`, margin, pageHeight - 35);
+    doc.text(`Total Chapters: ${ebook.content.length}`, margin, pageHeight - 28);
+    doc.text(`Date: ${new Date(ebook.createdAt || Date.now()).toLocaleDateString()}`, margin, pageHeight - 21);
+    doc.text("Generated with Google Gemini AI", pageWidth - margin, pageHeight - 21, { align: 'right' });
 
-    // Content
-    if (ebook.content && ebook.content.length > 0) {
-      ebook.content.forEach((chapter) => {
+    // ==========================================
+    // 2. TABLE OF CONTENTS PAGE
+    // ==========================================
+    doc.addPage();
+    doc.setTextColor(17, 24, 39);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(22);
+    doc.text("Table of Contents", margin, 35);
+
+    doc.setDrawColor(r, g, b);
+    doc.setLineWidth(0.8);
+    doc.line(margin, 40, margin + 40, 40);
+
+    let tocY = 55;
+    doc.setFontSize(12);
+    doc.setTextColor(55, 65, 81);
+
+    ebook.content.forEach((chapter, index) => {
+      doc.setFont('helvetica', 'bold');
+      const chapterLabel = `Chapter ${index + 1}: ${chapter.title}`;
+      doc.text(chapterLabel, margin, tocY);
+
+      doc.setFont('helvetica', 'normal');
+      const targetPageNum = index + 3; // Cover = 1, TOC = 2, First chapter = 3
+      doc.text(`${targetPageNum}`, pageWidth - margin, tocY, { align: 'right' });
+
+      // Subtle dotted separator
+      doc.setDrawColor(209, 213, 219);
+      doc.setLineDashPattern([1, 2], 0);
+      const textWidth = doc.getTextWidth(chapterLabel);
+      doc.line(margin + textWidth + 3, tocY - 1, pageWidth - margin - 10, tocY - 1);
+      doc.setLineDashPattern([], 0); // reset
+
+      tocY += 12;
+      if (tocY > pageHeight - 30) {
         doc.addPage();
+        tocY = 30;
+      }
+    });
 
-        doc.setFontSize(18);
-        doc.text(chapter.title, 20, 20);
+    // ==========================================
+    // 3. CHAPTER PAGES
+    // ==========================================
+    let pdfPageNum = 3;
 
-        doc.setFontSize(12);
-        const splitText = doc.splitTextToSize(chapter.text, 170);
-        doc.text(splitText, 20, 40);
-      });
-    }
+    ebook.content.forEach((chapter, index) => {
+      doc.addPage();
 
-    doc.save(`${ebook.title.replace(/\s+/g, '_')}.pdf`);
+      // Running top header
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9);
+      doc.setTextColor(156, 163, 175);
+      doc.text(ebook.title, margin, 15);
+      doc.text(`Chapter ${index + 1}`, pageWidth - margin, 15, { align: 'right' });
+      doc.setDrawColor(243, 244, 246);
+      doc.line(margin, 18, pageWidth - margin, 18);
+
+      // Chapter Title
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(18);
+      doc.setTextColor(17, 24, 39);
+      doc.text(chapter.title, margin, 32);
+
+      // Chapter Content Body
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(11);
+      doc.setTextColor(55, 65, 81);
+
+      const splitText = doc.splitTextToSize(chapter.text || '', contentWidth);
+      let contentY = 44;
+      const lineHeight = 6.5;
+
+      for (let i = 0; i < splitText.length; i++) {
+        if (contentY + lineHeight > pageHeight - 25) {
+          // Bottom footer before new page
+          doc.setFontSize(9);
+          doc.setTextColor(156, 163, 175);
+          doc.text(`Page ${pdfPageNum}`, pageWidth / 2, pageHeight - 12, { align: 'center' });
+
+          doc.addPage();
+          pdfPageNum++;
+          contentY = 25;
+
+          // Running header on continuation page
+          doc.setFontSize(9);
+          doc.setTextColor(156, 163, 175);
+          doc.text(`${chapter.title} (Continued)`, margin, 15);
+          doc.line(margin, 18, pageWidth - margin, 18);
+
+          doc.setFontSize(11);
+          doc.setTextColor(55, 65, 81);
+        }
+        doc.text(splitText[i], margin, contentY);
+        contentY += lineHeight;
+      }
+
+      // Bottom footer for chapter end page
+      doc.setFontSize(9);
+      doc.setTextColor(156, 163, 175);
+      doc.text(`Page ${pdfPageNum}`, pageWidth / 2, pageHeight - 12, { align: 'center' });
+      pdfPageNum++;
+    });
+
+    const safeFilename = ebook.title.replace(/[^a-zA-Z0-9_-]/g, '_');
+    doc.save(`${safeFilename || 'ebook'}.pdf`);
   };
 
   const openSettings = () => {
     setChapters(ebook.content || []);
-    setEditTitle(ebook.title); // Initialize with current title
+    setEditTitle(ebook.title);
     const currentContent = ebook.content[currentPage - 1];
     if (currentContent) {
       setEditChapterTitle(currentContent.title);
@@ -158,8 +340,6 @@ const EbookViewer = () => {
     setError('');
 
     try {
-      // Apply the edited chapter title/text onto the chapter currently being edited.
-      // We identify it by matching the chapter that was open when settings opened.
       const originalChapter = ebook.content[currentPage - 1];
       let updatedContent = [...chapters];
 
@@ -217,13 +397,64 @@ const EbookViewer = () => {
     );
   }
 
+  // FAILED STATE UI
+  if (ebook.status === 'failed') {
+    return (
+      <div className="flex h-screen flex-col items-center justify-center bg-gray-50 p-6 text-center">
+        <div className="mb-4 rounded-full bg-red-100 p-4 text-red-600">
+          <AlertTriangle className="h-10 w-10" />
+        </div>
+        <h2 className="text-2xl font-bold text-gray-900">eBook Generation Failed</h2>
+        <p className="text-gray-600 mt-2 max-w-md text-sm sm:text-base">
+          {ebook.generationError || 'The AI generation encountered an issue while generating content.'}
+        </p>
+        <div className="mt-6 flex flex-col sm:flex-row gap-3">
+          <button
+            onClick={() => pollEbook(true)}
+            className="flex items-center justify-center gap-2 rounded-xl bg-indigo-600 px-6 py-2.5 text-sm font-bold text-white shadow-md hover:bg-indigo-700 transition-all"
+          >
+            <RefreshCw className="h-4 w-4" />
+            Retry Status
+          </button>
+          <Link
+            to="/dashboard"
+            className="rounded-xl border border-gray-300 bg-white px-6 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-all"
+          >
+            Return to Dashboard
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  // GENERATING STATE UI (with taking-longer state)
   if (ebook.status === 'generating') {
     return (
-      <div className="flex h-screen flex-col items-center justify-center bg-gray-50">
+      <div className="flex h-screen flex-col items-center justify-center bg-gray-50 p-6 text-center">
         <div className="h-12 w-12 animate-spin rounded-full border-4 border-indigo-600 border-t-transparent mb-4"></div>
-        <h2 className="text-xl font-bold text-gray-900">Generating your eBook...</h2>
-        <p className="text-gray-600 mt-2">This may take a few moments. Please refresh the page shortly.</p>
-        <Link to="/dashboard" className="mt-6 text-indigo-600 hover:underline">Return to Dashboard</Link>
+        <h2 className="text-xl sm:text-2xl font-bold text-gray-900">Generating your eBook...</h2>
+        <p className="text-gray-600 mt-2 max-w-md">
+          {isTakingLonger
+            ? "Generation is taking longer than expected. Gemini AI is continuing to process in the background."
+            : "This may take a few moments as AI crafts your chapters and formatting."}
+        </p>
+        <div className="mt-6 flex flex-col sm:flex-row gap-3">
+          <button
+            onClick={() => {
+              pollAttemptRef.current = 0;
+              setIsTakingLonger(false);
+              pollEbook(true);
+            }}
+            disabled={refreshing}
+            className="flex items-center justify-center gap-2 rounded-xl bg-indigo-600 px-6 py-2.5 text-sm font-bold text-white shadow-md hover:bg-indigo-700 transition-all disabled:opacity-50"
+          >
+            <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+            {refreshing ? 'Checking...' : 'Check Status'}
+          </button>
+          <Link to="/dashboard" className="rounded-xl border border-gray-300 bg-white px-6 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-all">
+            Return to Dashboard
+          </Link>
+        </div>
       </div>
     );
   }
@@ -235,9 +466,7 @@ const EbookViewer = () => {
       <div className="flex h-screen flex-col items-center justify-center bg-gray-50 p-4 text-center">
         <h2 className="text-xl font-bold text-gray-900">No content available</h2>
         <p className="text-gray-600 mt-2 max-w-md">
-          {ebook.status === 'draft' && ebook.description.includes('Generation failed')
-            ? <span className="text-red-500">{ebook.description}</span>
-            : "This ebook has no pages yet."}
+          This ebook currently has no chapter content.
         </p>
         <Link to="/dashboard" className="mt-4 text-indigo-600 hover:underline">Return to Dashboard</Link>
       </div>
@@ -261,10 +490,11 @@ const EbookViewer = () => {
         <div className="flex items-center gap-1 sm:gap-2 shrink-0">
           <button
             onClick={handleDownloadPDF}
-            className="rounded-full p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-900"
+            className="flex items-center gap-1.5 rounded-xl bg-indigo-50 px-3 py-1.5 text-xs sm:text-sm font-bold text-indigo-600 hover:bg-indigo-600 hover:text-white transition-all shadow-sm"
             title="Download PDF"
           >
-            <Download className="h-5 w-5" />
+            <Download className="h-4 w-4" />
+            <span className="hidden sm:inline">Export PDF</span>
           </button>
           <button
             onClick={openSettings}

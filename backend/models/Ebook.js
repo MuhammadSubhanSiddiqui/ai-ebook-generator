@@ -35,8 +35,12 @@ const ebookSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ['draft', 'generating', 'completed'],
+    enum: ['draft', 'generating', 'completed', 'failed'],
     default: 'draft'
+  },
+  generationError: {
+    type: String,
+    default: null
   },
   totalPages: {
     type: Number,

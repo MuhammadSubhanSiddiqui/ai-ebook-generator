@@ -12,8 +12,6 @@ import testimonialRoutes from './routes/testimonialRoutes.js';
 
 dotenv.config();
 
-connectDB();
-
 const app = express();
 
 app.use(helmet());
@@ -55,8 +53,13 @@ app.use((req, res) => {
 // Centralized error handler (must be last)
 app.use(errorHandler);
 
-const PORT = process.env.PORT || 5000;
+if (process.env.NODE_ENV !== 'test') {
+  connectDB();
+  const PORT = process.env.PORT || 5000;
+  app.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
+  });
+}
 
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
+export default app;
+export { app };

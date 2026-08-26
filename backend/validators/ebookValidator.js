@@ -32,7 +32,7 @@ export const updateEbookSchema = Joi.object({
   title: Joi.string().max(200).allow(''),
   description: Joi.string().max(1000).allow(''),
   coverColor: Joi.string().max(50).allow(''),
-  status: Joi.string().valid('draft', 'generating', 'completed'),
+  status: Joi.string().valid('draft', 'generating', 'completed', 'failed'),
   totalPages: Joi.number().integer().min(0).max(10000),
   content: Joi.array().items(contentItemSchema),
 })

@@ -179,20 +179,28 @@ const Dashboard = () => {
                     <span className={`rounded-full px-2.5 py-1 text-xs font-semibold capitalize tracking-wide
                       ${ebook.status === 'completed' ? 'bg-green-50 text-green-600 border border-green-100' :
                         ebook.status === 'generating' ? 'bg-yellow-50 text-yellow-600 border border-yellow-100' :
+                        ebook.status === 'failed' ? 'bg-red-50 text-red-600 border border-red-100' :
                         'bg-gray-50 text-gray-600 border border-gray-100'}`}>
                       {ebook.status}
                     </span>
                   </div>
 
                   {/* Action Button */}
-                  {ebook.status === 'completed' && (
+                  {ebook.status === 'completed' ? (
                     <Link
                       to={`/ebook/${ebook._id}`}
                       className="mt-5 flex w-full items-center justify-center rounded-xl bg-indigo-50 px-4 py-2.5 text-sm font-bold text-indigo-600 hover:bg-indigo-600 hover:text-white transition-all duration-300"
                     >
                       Read Book
                     </Link>
-                  )}
+                  ) : ebook.status === 'failed' ? (
+                    <Link
+                      to={`/ebook/${ebook._id}`}
+                      className="mt-5 flex w-full items-center justify-center rounded-xl bg-red-50 px-4 py-2.5 text-sm font-bold text-red-600 hover:bg-red-600 hover:text-white transition-all duration-300"
+                    >
+                      View Details
+                    </Link>
+                  ) : null}
                 </div>
               </div>
             ))}

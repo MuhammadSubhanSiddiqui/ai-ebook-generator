@@ -95,6 +95,34 @@ Content-Type: application/json
 ```
 - **Response** (200): Same as registration.
 
+#### Get User Profile
+```http
+GET /api/users/profile
+Authorization: Bearer <jwt-token>
+```
+- **Response** (200):
+```json
+{
+  "_id": "60f73e1234567890abcdef12",
+  "name": "John Doe",
+  "email": "john@example.com"
+}
+```
+
+#### Update User Profile
+```http
+PUT /api/users/profile
+Authorization: Bearer <jwt-token>
+Content-Type: application/json
+
+{
+  "name": "John Doe Updated",
+  "email": "john_new@example.com",
+  "password": "NewStrongP@ssw0rd!"
+}
+```
+- **Response** (200): Updated user object with refreshed JWT token.
+
 ### eBooks
 
 > All eBook routes are **protected** – the request must include an `Authorization: Bearer <token>` header.
