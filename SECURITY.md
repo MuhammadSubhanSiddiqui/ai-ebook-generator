@@ -1,84 +1,69 @@
 # 🔒 Security Review & Hardening
 
-This document summarizes the security analysis of the **AI eBook Generator** and the mitigations that have been applied on top of the original codebase.
-
-## Original Vulnerabilities Found
-
-### 1. Critical: Missing Authorization (IDOR) on eBook routes
-- `getEbookById`, `updateEbook`, and `deleteEbook` fetched ebooks by `_id` only, **without** checking `user`. Any authenticated user could read, modify, or delete any other user's ebooks by guessing/iterating IDs.
-- **Fix:** All three endpoints now scope queries with `{ _id, user: req.user._id }`.
-
-### 2. High: No Input Validation
-- Registration and ebook endpoints accepted arbitrary/unvalidated payloads (unsanitized HTML, oversized fields, malformed email).
-- **Fix:** Added Joi validation middleware for registration, login, ebook create/update, and testimonials.
-
-### 3. High: Weak Password Policy
-- Passwords could be as short or trivial as the user chose.
-- **Fix:** Enforce min 8 chars with uppercase, lowercase, number, and special character on registration.
-
-### 4. High: No Rate Limiting
-- Login/register and all endpoints were open to brute-force and abuse.
-- **Fix:** Added `express-rate-limit` (default 100 req / 15 min per IP, configurable via env).
-
-### 5. Medium: CORS Wide Open
-- `app.use(cors())` allowed any origin.
-- **Fix:** CORS now reads an allowlist from `CORS_ORIGIN` env var (comma-separated). Falls back to `*` if unset (dev only).
-
-### 6. Medium: Missing Security Headers
-- No `X-Content-Type-Options`, CSP, `Strict-Transport-Security`, frame-ancestors, etc.
-- **Fix:** Added the `helmet` middleware.
-
-### 7. Medium: Verbose Error Messages
-- Controllers returned raw `error.message` to the client, leaking internals (DB paths, stack details).
-- **Fix:** Standardized error responses; raw errors logged server-side only.
-
-### 8. Medium: JWT Handling
-- Token expiry produced a generic error; no ended-token response distinction.
-- **Fix:** authMiddleware now distinguishes expired vs invalid tokens and handles missing users.
-
-### 9. Low: Debug Scripts Committed
-- `debug_ebook.js`, `check_db.js`, `list_models.js`, `test_model.js` were committed to the repo.
-- **Fix:** Removed all four debug scripts.
-
-## Applied Production Hardening
-
-| Control | Implementation |
-|---|---|
-| **Rate limiting** | `express-rate-limit` on `/api/*` |
-| **Security headers** | `helmet` |
-| **CORS allowlist** | `CORS_ORIGIN` env var |
-| **Input validation** | Joi validator layer (`middleware/validate.js`) |
-| **Password policy** | Upper/lower/digit/special + min length |
-| **Ownership checks** | Scoped queries on protected resources |
-| **Request logging** | `morgan` |
-| **Centralized errors** | `middleware/errorHandler.js` |
-| **Health endpoint** | `GET /health` |
-| **Secrets in env** | `.env.example` documents all variables; `.env` is git-ignored |
-
-## Recommended Priorities (Production Go-Live)
-
-1. **Enable HTTPS** at the reverse proxy / load balancer (TLS termination).
-2. **Set a strong `JWT_SECRET`** (≥ 32 random chars) in production.
-3. **Enable email verification / password reset** before public launch.
-4. **Add a background job queue** (BullMQ) so Gemini generation is retryable and doesn't run inside the request path.
-5. **Pin AI output size / length** and add a retry + timeout around Gemini calls.
-6. **Run `npm audit`** in CI and gate on high/critical severity.
-7. **Add Content Security Policy** via helmet config tailored to Vite dev/build.
-8. **Set up database backups** and monitoring for the MongoDB cluster.
-
-## Auth Flow
-
-- Passwords hashed with `bcryptjs` (10 salt rounds) via `UserSchema.pre('save')`.
-- JWT signed with `JWT_SECRET`, expiry from `JWT_EXPIRE` (default 30d).
-- `protect` middleware verifies `Authorization: Bearer <token>` and loads the user.
-- Ownership is enforced per-resource by scoping queries to `req.user._id`.
-
-## Sensitive Data
-
-- `MONGO_URI`, `GEMINI_API_KEY`, `JWT_SECRET` are only read from the environment.
-- Never commit `.env` files (see `.gitignore`).
-- `PricingPage.jsx` includes hard-coded pricing; if real billing is added, use a server-side pricing source.
+This document summarizes the security analysis of the **AI eBook Generator** and the mitigations applied across the full stack.
 
 ---
 
-*Review completed as part of making the repository production-ready.*
+## Vulnerabilities & Applied Mitigations
+
+### 1. Critical: Missing Authorization (IDOR) on eBook Routes
+- **Vulnerability**: `getEbookById`, `updateEbook`, and `deleteEbook` originally fetched ebooks by `_id` without verifying the authenticated user.
+- **Mitigation**: All eBook queries are strictly scoped with `{ _id: req.params.id, user: req.user._id }`. Cross-user access attempts return `404 Not Found`. Automated integration tests in `backend/tests/ebook.test.js` continuously verify this behavior.
+
+### 2. High: Prompt Injection & AI Abuse
+- **Vulnerability**: User-submitted titles and descriptions were passed directly into generative AI prompt strings without delimiter boundaries.
+- **Mitigation**: `backend/services/geminiService.js` applies `sanitizePromptInput` to strip escape characters and wraps inputs in clear delimiters. Gemini API calls are wrapped in an exponential retry backoff (3 attempts) with a 35s hard timeout.
+
+### 3. High: Input Validation & Sanitization
+- **Vulnerability**: Endpoints previously accepted arbitrary, oversized, or malformed JSON payloads.
+- **Mitigation**: Standardized Joi schemas validate all request bodies for user registration, login, profile updates, eBook creation/editing, and testimonials before reaching controllers.
+
+### 4. High: Weak Password Policy
+- **Vulnerability**: Trivial or empty passwords could be submitted.
+- **Mitigation**: Enforce minimum 8 characters with at least one uppercase letter, one lowercase letter, one number, and one special character on registration and password updates.
+
+### 5. High: Brute-Force & Denial of Service
+- **Vulnerability**: Auth and generation endpoints were open to rapid spamming.
+- **Mitigation**: Integrated `express-rate-limit` across all `/api/*` endpoints (default: 100 requests per 15 minutes per IP, customizable via environment variables).
+
+### 6. Medium: Unrestricted CORS
+- **Vulnerability**: `app.use(cors())` permitted cross-origin requests from any domain.
+- **Mitigation**: Configured origin allowlisting via `CORS_ORIGIN` environment variable.
+
+### 7. Medium: Missing HTTP Security Headers
+- **Vulnerability**: Missing security headers (MIME sniffing, clickjacking, XSS).
+- **Mitigation**: Integrated `helmet` middleware.
+
+### 8. Medium: Verbose Internal Error Leaks
+- **Vulnerability**: Stack traces and database internals were sent directly to clients.
+- **Mitigation**: Centralized `errorHandler.js` returns clean, user-friendly JSON error messages while logging detailed diagnostics server-side.
+
+### 9. Low: Committed Debug Scripts & Dead Code
+- **Vulnerability**: Debug files (`check_db.js`, `debug_ebook.js`, `list_models.js`, `test_model.js`, `PricingPage.jsx`) were in the repository.
+- **Mitigation**: Completely removed all debug scripts and unreferenced components.
+
+---
+
+## Security Controls Summary
+
+| Control Area | Implementation |
+|---|---|
+| **Rate Limiting** | `express-rate-limit` on all `/api/*` routes |
+| **Security Headers** | `helmet` HTTP headers |
+| **CORS Policy** | Whitelist via `CORS_ORIGIN` env variable |
+| **Input Validation** | Joi validation schemas via `middleware/validate.js` |
+| **Password Policy** | Regex complexity requirement (min 8 chars, Aa1@) |
+| **IDOR Prevention** | Scoped queries `{ _id, user: req.user._id }` |
+| **Prompt Sanitization** | `geminiService.sanitizePromptInput` + delimiter isolation |
+| **AI Reliability** | 3-attempt backoff + 35s hard timeout |
+| **Secrets Management** | All credentials in `.env` (git-ignored); `.env.example` provided |
+| **Automated Testing** | 26 automated Jest + Supertest integration tests in CI |
+
+---
+
+## Authentication & Session Flow
+
+1. Passwords hashed with `bcryptjs` (10 salt rounds) via `UserSchema.pre('save')`.
+2. JWT signed with `JWT_SECRET` and configurable expiry (`JWT_EXPIRE`, default `30d`).
+3. `protect` middleware verifies `Authorization: Bearer <token>` and loads `req.user`.
+4. Ownership is enforced per-resource by scoping database queries to `req.user._id`.

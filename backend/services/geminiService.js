@@ -68,7 +68,7 @@ export const generateEbookContent = async (ebookId, rawTitle, rawDescription) =>
     }
 
     const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+    const model = genAI.getGenerativeModel({ model: "gemini-3.6-flash" });
 
     const safeTitle = sanitizePromptInput(rawTitle);
     const safeDescription = sanitizePromptInput(rawDescription);
@@ -114,11 +114,22 @@ Requirements:
       throw new Error("AI response did not contain a valid array of chapters");
     }
 
-    const formattedContent = chapters.map((chapter, index) => ({
-      page: index + 1,
-      title: chapter.title || `Chapter ${index + 1}`,
-      text: chapter.text || ''
-    }));
+    const cleanTitle = (raw) => {
+      if (typeof raw !== 'string') return '';
+      return raw
+        .replace(/^(Chapter|Ch\.?)\s*\d+[\s:.-]*/i, '')
+        .replace(/^\d+[\s:.-]+\s*/, '')
+        .trim() || raw;
+    };
+
+    const formattedContent = chapters.map((chapter, index) => {
+      const parsedTitle = cleanTitle(chapter.title);
+      return {
+        page: index + 1,
+        title: parsedTitle || `Chapter ${index + 1}`,
+        text: chapter.text || ''
+      };
+    });
 
     await Ebook.findByIdAndUpdate(ebookId, {
       content: formattedContent,

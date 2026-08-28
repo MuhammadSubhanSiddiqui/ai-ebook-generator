@@ -2,246 +2,236 @@
 
 ## System Overview
 
-AI eBook Generator is a full-stack web application that allows users to create professional eBooks with the help of Google Gemini AI. The application consists of a React-based frontend and a Node.js/Express backend.
+AI eBook Generator is a full-stack web application that allows users to create, customize, and export professional multi-chapter eBooks using Google Gemini AI. The system comprises a React 19 Single Page Application and a secure Node.js/Express REST API backed by MongoDB Atlas.
+
+---
 
 ## Tech Stack
 
 ### Frontend
 - **Framework**: React 19.2.0
 - **Build Tool**: Vite 7.2.2
-- **UI Library**: Tailwind CSS 4.1.17
+- **Styling & Design System**: Tailwind CSS 4.1.17 with CSS variable tokens & custom variant dark mode
+- **Typography**: Google Fonts (**Cinzel**, **Lora**, **Plus Jakarta Sans**)
 - **Routing**: React Router DOM 7.10.0
-- **Drag & Drop**: @dnd-kit/sortable
-- **PDF Generation**: jsPDF
+- **Drag & Drop**: `@dnd-kit/core`, `@dnd-kit/sortable`, `@dnd-kit/utilities`
+- **PDF Generation**: `jspdf` (formatted covers, table of contents, pagination)
 - **Icons**: Lucide React
-- **State Management**: React Hooks (useState, useEffect)
+- **State & Theme**: React Context (`AuthContext`, `ThemeContext`)
 
 ### Backend
-- **Runtime**: Node.js
+- **Runtime**: Node.js (ES Modules)
 - **Framework**: Express 5.2.1
 - **Database**: MongoDB with Mongoose 9.0.2
-- **Authentication**: JWT (jsonwebtoken 9.0.3)
-- **Password Encryption**: bcryptjs 3.0.3
-- **AI Integration**: Google Generative AI (@google/generative-ai 0.24.1)
-- **Environment Management**: dotenv
+- **Authentication**: JWT (`jsonwebtoken` 9.0.3)
+- **Password Encryption**: `bcryptjs` 3.0.3
+- **AI Integration**: Google Generative AI (`@google/generative-ai` 0.24.1) via resilient service layer
+- **Security & Validation**: `helmet`, `express-rate-limit`, `joi`, `cors`
+- **Testing**: Jest 30, Supertest 7, MongoMemoryServer 11, Cross-Env 10
 
-## Architecture
+---
 
-### Project Structure
+## Project Structure
 
 ```
 eBookGenerator/
+├── .github/
+│   └── workflows/
+│       └── ci.yml               # GitHub Actions CI Workflow (Tests + Build)
 ├── backend/
 │   ├── config/
-│   │   └── db.js              # MongoDB connection configuration
+│   │   └── db.js                # MongoDB connection handler
 │   ├── controllers/
-│   │   ├── ebookController.js # eBook CRUD operations
-│   │   ├── userController.js  # User authentication
-│   │   └── testimonialController.js # Testimonial management
+│   │   ├── ebookController.js   # eBook CRUD operations & generation dispatch
+│   │   ├── userController.js    # Auth & user profile management
+│   │   └── testimonialController.js # Testimonial CRUD
 │   ├── middleware/
-│   │   └── authMiddleware.js  # JWT authentication middleware
+│   │   ├── authMiddleware.js    # JWT verification & req.user injection
+│   │   ├── errorHandler.js      # Centralized error handler & asyncHandler
+│   │   └── validate.js          # Joi schema validation middleware
 │   ├── models/
-│   │   ├── Ebook.js           # eBook data model
-│   │   ├── User.js            # User data model
-│   │   └── Testimonial.js     # Testimonial data model
+│   │   ├── Ebook.js             # eBook schema (with 'failed' state & generationError)
+│   │   ├── User.js              # User schema with bcrypt pre-save hook
+│   │   └── Testimonial.js       # Testimonial data model
 │   ├── routes/
-│   │   ├── ebookRoutes.js     # eBook API routes
-│   │   ├── userRoutes.js      # User API routes
-│   │   └── testimonialRoutes.js # Testimonial API routes
-│   ├── services/              # Business logic layer (to be added)
-│   ├── utils/                 # Utility functions (to be added)
-│   ├── validators/            # Request validation (to be added)
-│   ├── index.js               # Main application entry point
-│   ├── .env.example           # Environment variables template
-│   └── package.json           # Dependencies
+│   │   ├── ebookRoutes.js       # Protected eBook endpoints
+│   │   ├── userRoutes.js        # Auth and /profile endpoints
+│   │   └── testimonialRoutes.js # Testimonial endpoints
+│   ├── services/
+│   │   └── geminiService.js     # AI generation with retries, timeouts, & sanitization
+│   ├── tests/
+│   │   ├── setup.js             # Test database setup (Atlas/MongoMemoryServer)
+│   │   ├── auth.test.js         # User registration, login, and profile tests
+│   │   ├── ebook.test.js        # eBook CRUD & IDOR ownership tests
+│   │   └── validators.test.js   # Joi schema and prompt sanitizer unit tests
+│   ├── validators/
+│   │   ├── ebookValidator.js    # eBook Joi validation schemas
+│   │   ├── userValidator.js     # Registration, login, & profile update schemas
+│   │   └── testimonialValidator.js # Testimonial validation schemas
+│   ├── index.js                 # App config & server entry point
+│   ├── .env.example             # Template environment configuration
+│   └── package.json             # Backend dependencies & test scripts
 │
 └── frontend/
-    ├── public/
-    │   └── vite.svg
     ├── src/
-    │   ├── assets/
-    │   │   └── react.svg
+    │   ├── api/
+    │   │   └── index.js         # Centralized Fetch API client with 401 handling
     │   ├── components/
-    │   │   ├── Features.jsx    # Features section (unused)
-    │   │   ├── Footer.jsx      # Site footer
-    │   │   ├── Hero.jsx        # landing page hero
-    │   │   ├── Navbar.jsx      # Main navigation
-    │   │   ├── PricingPage.jsx # Pricing page section
-    │   │   ├── ProtectedRoute.jsx # Route protection
-    │   │   └── Testimonials.jsx # User testimonials
+    │   │   ├── Features.jsx     # Landing page feature showcase
+    │   │   ├── Footer.jsx       # Global footer with social links
+    │   │   ├── Hero.jsx         # Modern split hero with 3D live preview
+    │   │   ├── Navbar.jsx       # Navigation with responsive theme toggle
+    │   │   ├── ProtectedRoute.jsx # Client-side route authentication guard
+    │   │   ├── Skeletons.jsx    # Shimmering card & reader skeleton loaders
+    │   │   └── Testimonials.jsx # User reviews with form submission
+    │   ├── context/
+    │   │   ├── AuthContext.jsx  # Authentication state & persistent login
+    │   │   └── ThemeContext.jsx # Light/dark mode state & local persistence
     │   ├── pages/
-    │   │   ├── Dashboard.jsx       # User dashboard
-    │   │   ├── EbookViewer.jsx     # eBook content viewer
-    │   │   ├── LandingPage.jsx     # Main landing page
-    │   │   ├── Login.jsx           # Login page
-│   │   │   └── Register.jsx       # Registration page
-    │   ├── App.jsx               # Main application component
-    │   ├── main.jsx              # React entry point
-    │   ├── index.css             # Global styles
-    │   └── api/                  # API service layer (to be added)
-    ├── .env.example             # Environment variables template
-    ├── .gitignore
-    ├── eslint.config.js
-    ├── index.html
-    ├── package.json
-    └── vite.config.js
+    │   │   ├── Dashboard.jsx    # Library grid, search, status filter, cover picker
+    │   │   ├── EbookViewer.jsx  # Multi-step generation tracker, reader, PDF export
+    │   │   ├── LandingPage.jsx  # Main landing page
+    │   │   ├── Login.jsx        # Login page with password toggle
+    │   │   └── Register.jsx     # Registration page with password toggle
+    │   ├── App.jsx              # App root wrapped in ThemeProvider & Router
+    │   ├── main.jsx             # React DOM root wrapped in AuthProvider
+    │   └── index.css            # Design tokens, typography, keyframe animations
+    ├── index.html               # Head theme initializer script & HTML template
+    └── package.json             # Frontend dependencies
 ```
+
+---
 
 ## Data Models
 
-### User Schema
+### User Schema (`backend/models/User.js`)
 
 ```javascript
 {
-  name: String,               // Required
-  email: String,              // Required, unique
-  password: String,           // Required (hashed)
-  createdAt: Date,            // Auto-generated
-  updatedAt: Date             // Auto-generated
+  name: { type: String, required: true },
+  email: { type: String, required: true, unique: true },
+  password: { type: String, required: true }, // Encrypted via bcrypt
+  createdAt: Date,
+  updatedAt: Date
 }
 ```
 
-### eBook Schema
+### eBook Schema (`backend/models/Ebook.js`)
 
 ```javascript
 {
-  user: ObjectId,             // Reference to User
-  title: String,              // Required
-  description: String,        // Required
-  coverColor: String,         // Default: 'bg-gradient-to-br from-blue-500 to-indigo-600'
-  status: String,             // Enum: ['draft', 'generating', 'completed']
-  totalPages: Number,         // Default: 0
-  content: Array[              // Array of pages
+  user: { type: ObjectId, ref: 'User', required: true },
+  title: { type: String, required: true },
+  description: { type: String, required: true },
+  coverColor: { type: String, default: 'bg-gradient-to-br from-blue-600 via-indigo-700 to-indigo-900' },
+  status: {
+    type: String,
+    enum: ['draft', 'generating', 'completed', 'failed'],
+    default: 'generating'
+  },
+  generationError: { type: String, default: null },
+  totalPages: { type: Number, default: 0 },
+  content: [
     {
-      page: Number,           // Required
-      title: String,          // Required
-      text: String            // Required
+      page: { type: Number, required: true },
+      title: { type: String, required: true },
+      text: { type: String, required: true }
     }
   ],
-  author: String,             // Default: 'AI Generator'
-  createdAt: Date,            // Auto-generated
-  updatedAt: Date             // Auto-generated
+  author: { type: String, default: 'AI Author' },
+  createdAt: Date,
+  updatedAt: Date
 }
 ```
 
-### Testimonial Schema
+### Testimonial Schema (`backend/models/Testimonial.js`)
 
 ```javascript
 {
-  user: ObjectId,             // Reference to User (required)
-  text: String,               // Required
-  authorName: String,         // Required
-  role: String,               // Default: 'User'
-  createdAt: Date             // Auto-generated
+  user: { type: ObjectId, ref: 'User', required: true },
+  text: { type: String, required: true },
+  authorName: { type: String, required: true },
+  role: { type: String, default: 'Author & Creator' },
+  createdAt: Date
 }
 ```
+
+---
 
 ## API Endpoints
 
-### Authentication
+### Authentication & Profile (`/api/users`)
+- `POST /api/users` - Register a new account (Returns JWT)
+- `POST /api/users/login` - Authenticate existing user (Returns JWT)
+- `GET /api/users/profile` - Fetch authenticated user profile (Protected)
+- `PUT /api/users/profile` - Update name, email, or password (Protected)
 
-- `POST /api/users/register` - Register a new user
-- `POST /api/users/login` - Authenticate a user
+### eBooks (`/api/ebooks`)
+- `GET /api/ebooks` - Fetch all eBooks owned by authenticated user (Protected)
+- `POST /api/ebooks` - Create a new eBook & trigger asynchronous Gemini generation (Protected)
+- `GET /api/ebooks/:id` - Fetch single eBook by ID (Protected, IDOR validated)
+- `PUT /api/ebooks/:id` - Update eBook title/content (Protected, IDOR validated)
+- `DELETE /api/ebooks/:id` - Delete eBook (Protected, IDOR validated)
 
-### eBooks
+### Testimonials (`/api/testimonials`)
+- `GET /api/testimonials` - Fetch all public testimonials (Public)
+- `POST /api/testimonials` - Submit a testimonial (Protected)
+- `DELETE /api/testimonials/:id` - Delete owned testimonial (Protected)
 
-- `GET /api/ebooks` - Get all user's ebooks (Protected)
-- `POST /api/ebooks` - Create a new ebook (Protected)
-- `GET /api/ebooks/:id` - Get ebook by ID (Protected)
-- `PUT /api/ebooks/:id` - Update ebook (Protected)
-- `DELETE /api/ebooks/:id` - Delete ebook (Protected)
+---
 
-### Testimonials
+## Security Architecture
 
-- `GET /api/testimonials` - Get all testimonials (Public)
-- `POST /api/testimonials` - Create testimonial (Protected)
-- `DELETE /api/testimonials/:id` - Delete testimonial (Protected)
+1. **Input Validation**: Joi validator middleware sanitizes every incoming request payload before reaching controllers.
+2. **IDOR Ownership Enforcement**: Every eBook query enforces `{ _id: req.params.id, user: req.user._id }`. Users attempting to access other users' eBooks receive a 404 response.
+3. **Prompt Injection Defense**: `geminiService.sanitizePromptInput` strips prompt escape sequences and enforces delimiter boundaries.
+4. **Rate Limiting**: `express-rate-limit` prevents brute-force and DDoS on API routes.
+5. **Security Headers**: `helmet` sets secure HTTP headers.
+6. **CORS Allowlist**: Cross-origin requests restricted via `CORS_ORIGIN`.
 
-## Authentication Flow
+---
 
-1. **Register**: User creates account → hashed password stored → JWT token returned
-2. **Login**: User provides credentials → password verified → JWT token returned
-3. **Token Storage**: JWT stored in localStorage as 'userInfo'
-4. **Validation**: Each protected route checks for 'Bearer' token → verifies JWT → attaches user to req
+## AI Generation Architecture
 
-## AI Generation Flow
+```
+User Form Submit (Title + Description)
+             │
+             ▼
+POST /api/ebooks (Saves record with status='generating')
+             │
+             ├──────────────────────────┐
+             ▼                          ▼
+Returns 201 Created immediately    Calls geminiService.generateEbookContent() in background
+(User redirected to viewer)             │
+                                        ▼
+                           Prompt Sanitization & Delimiters
+                                        │
+                                        ▼
+                           Gemini 2.5 Flash API Call
+                           (3 Retries + 35s Timeout)
+                                        │
+                                ┌───────┴───────┐
+                                ▼               ▼
+                            [Success]        [Failure]
+                                │               │
+                      Status: 'completed'  Status: 'failed'
+                      Saves parsed pages   Saves generationError
+                                │               │
+                                └───────┬───────┘
+                                        ▼
+                             Frontend Viewer Polling
+                             (Exponential Backoff + Visibility Pausing)
+```
 
-1. User creates ebook with title and description
-2. eBook marked as 'generating' status
-3. Background process calls Gemini AI with structured prompt
-4. AI returns JSON array with chapters
-5. Content stored as formatted pages
-6. Status updated to 'completed'
-7. User receives notification and can view ebook
+---
 
-## Key Challenges & Issues
+## Automated Testing & CI Workflow
 
-### Current Issues
-
-1. **Security Vulnerabilities**
-   - No rate limiting
-   - Unvalidated inputs
-   - No CORS restrictions
-   - Exposed API keys in production scenarios
-
-2. **Code Quality**
-   - Mix of concerns in controllers
-   - Limited error handling
-   - No validation layer
-   - Direct database/external API calls mixed with business logic
-
-3. **Performance**
-   - No caching strategy
-   - Unlimited polling interval
-   - No query optimization
-   - Missing connection pooling
-
-4. **Maintainability**
-   - Missing documentation
-   - No type definitions
-   - Scattered configuration
-   - No middleware for common operations
-
-5. **Missing Features**
-   - Email notifications
-   - Password reset
-   - User profile management
-   - Search functionality
-   - Analytics tracking
-
-### Future Enhancements
-
-1. Architecture improvements
-2. Service layer implementation
-3. Redis caching
-4. Background job queue (Bull or BullMQ)
-5. WebSockets for real-time updates
-6. Multiple export formats
-7. API key management
-8. Audit logging
-9. Health monitoring
-10. Comprehensive tests
-
-## Security Considerations
-
-- Store all sensitive data (API keys, passwords) in environment variables
-- Use HTTPS in production
-- Implement proper authentication and authorization
-- Validate and sanitize all inputs
-- Use prepared statements for database queries
-- Implement rate limiting to prevent abuse
-- Use strong JWT secrets
-- Educate users about password security
-
-## Deployment Recommendations
-
-1. Use environment-specific configurations
-2. Set up proper logging and monitoring
-3. Configure backup strategies for MongoDB
-4. Enable HTTPS with proper certificates
-5. Set up CI/CD pipeline
-6. Use deployment services like Vercel, Render, or AWS
-7. Set up domain and SSL
-8. Configure load balancing for production scale
-9. Implement database connection pooling
-10. Set up monitoring and alerts
+- **Unit & Integration Tests**: 26 test cases in `backend/tests/` covering:
+  - User registration, duplicate email handling, login validation, and profile CRUD.
+  - eBook creation, reading, updating, deleting, and IDOR protection.
+  - Joi schema validations and prompt sanitizers.
+- **GitHub Actions CI** (`.github/workflows/ci.yml`):
+  - Runs on every push and pull request.
+  - Executes full backend test suite (`npm test`).
+  - Verifies frontend build compilation (`npm run build`).

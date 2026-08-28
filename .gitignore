@@ -4,6 +4,8 @@
 # OS files
 .DS_Store
 Thumbs.db
+TESTING.md
+
 
 # IDE files
 .vscode

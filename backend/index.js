@@ -18,10 +18,25 @@ app.use(helmet());
 app.use(express.json());
 app.use(morgan('combined'));
 
-app.use(cors({
-  origin: process.env.CORS_ORIGIN?.split(',').map(origin => origin.trim()) || '*',
-  credentials: true,
-}));
+const allowedOrigins = process.env.CORS_ORIGIN
+  ? process.env.CORS_ORIGIN.split(',').map((o) => o.trim().replace(/\/$/, ''))
+  : '*';
+
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      if (!origin || allowedOrigins === '*' || allowedOrigins.includes('*')) {
+        return callback(null, true);
+      }
+      const normalized = origin.replace(/\/$/, '');
+      if (allowedOrigins.includes(normalized)) {
+        return callback(null, true);
+      }
+      return callback(new Error(`CORS blocked for origin: ${origin}`));
+    },
+    credentials: true,
+  })
+);
 
 const apiLimiter = rateLimit({
   windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000,

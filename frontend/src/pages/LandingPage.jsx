@@ -25,7 +25,7 @@ const LandingPage = () => {
   }, [location]);
 
   return (
-    <div className="min-h-screen bg-white">
+    <div className="min-h-screen bg-white transition-colors duration-200 dark:bg-[#090d16]">
       <Navbar />
       <Hero />
       <Features />

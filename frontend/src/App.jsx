@@ -8,9 +8,12 @@ import Dashboard from './pages/Dashboard';
 import EbookViewer from './pages/EbookViewer';
 import ProtectedRoute from './components/ProtectedRoute';
 
+import { ThemeProvider } from './context/ThemeContext';
+
 const App = () => {
   return (
-    <Router>
+    <ThemeProvider>
+      <Router>
       <Routes>
         <Route path="/" element={<LandingPage />} />
         <Route path="/login" element={<LoginPage />} />
@@ -22,6 +25,7 @@ const App = () => {
         </Route>
       </Routes>
     </Router>
+    </ThemeProvider>
   );
 };
 

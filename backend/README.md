@@ -2,61 +2,94 @@
 
 ## Overview
 
-The backend is built with **Node.js**, **Express**, and **MongoDB** (via Mongoose). It provides a set of RESTful APIs for authentication, eBook management, and testimonials. All routes follow a consistent structure with request validation, authentication (where required), and standardized response formats.
+The backend is built with **Node.js**, **Express 5**, and **MongoDB** (via Mongoose). It provides a secure, hardened RESTful API for user authentication, profile management, AI eBook generation, and community testimonials. All routes implement centralized input validation via Joi, JWT authentication guards, rate limiting, and structured error responses.
+
+---
 
 ## Prerequisites
 
 - **Node.js** >= 20.x
-- **npm** >= 10.x (or **yarn**) 
-- **MongoDB** cluster (Atlas or self‑hosted)
-- **Google Gemini API key** (for AI content generation)
-- **Environment variables** defined in `.env` (see `.env.example` for reference)
+- **npm** >= 10.x
+- **MongoDB** database (MongoDB Atlas or local)
+- **Google Gemini API Key** (for AI content generation)
+- **Environment variables** defined in `.env` (see `.env.example`)
+
+---
 
 ## Project Structure
 
 ```
 backend/
-├─ config/
-│  └─ db.js               # MongoDB connection helper
-├─ controllers/
-│  ├─ ebookController.js # eBook CRUD + generation logic
-│  ├─ userController.js  # Registration & login
-│  └─ testimonialController.js
-├─ middleware/
-│  └─ authMiddleware.js # JWT authentication guard
-├─ models/
-│  ├─ Ebook.js           # eBook schema
-│  ├─ User.js            # User schema
-│  └─ Testimonial.js     # Testimonial schema
-├─ routes/
-│  ├─ ebookRoutes.js     # /api/ebooks routes
-│  ├─ userRoutes.js      # /api/users routes
-│  └─ testimonialRoutes.js
-├─ services/              # Business logic (to be implemented)
-├─ validators/            # Request validation schemas (to be implemented)
-├─ utils/                # Common utilities (to be implemented)
-├─ index.js               # Application entry point
-├─ .env.example           # Environment variables template
-└─ package.json
+├── config/
+│   └── db.js                 # MongoDB connection handler
+├── controllers/
+│   ├── ebookController.js    # eBook CRUD operations & generation triggering
+│   ├── userController.js     # User registration, login, and profile management
+│   └── testimonialController.js # Testimonial CRUD
+├── middleware/
+│   ├── authMiddleware.js     # JWT authentication guard & req.user injection
+│   ├── errorHandler.js       # Centralized error handler & asyncHandler wrapper
+│   └── validate.js           # Joi request body validation middleware
+├── models/
+│   ├── Ebook.js              # eBook schema (draft, generating, completed, failed)
+│   ├── User.js               # User schema with bcrypt pre-save hashing
+│   └── Testimonial.js        # Testimonial schema
+├── routes/
+│   ├── ebookRoutes.js        # Protected eBook endpoints
+│   ├── userRoutes.js         # User auth and /profile routes
+│   └── testimonialRoutes.js  # Testimonial endpoints
+├── services/
+│   └── geminiService.js      # Gemini AI content generator with retries & timeouts
+├── tests/
+│   ├── setup.js              # In-memory / Atlas test database configuration
+│   ├── auth.test.js          # Authentication and user profile test suite
+│   ├── ebook.test.js         # eBook CRUD & IDOR ownership isolation test suite
+│   └── validators.test.js    # Joi schema validation and sanitizer test suite
+├── validators/
+│   ├── ebookValidator.js     # eBook validation schemas
+│   ├── userValidator.js      # User registration, login, & profile schemas
+│   └── testimonialValidator.js # Testimonial validation schemas
+├── index.js                  # Application configuration & server entry point
+├── .env.example              # Environment variables template
+└── package.json              # Backend dependencies & test scripts
 ```
+
+---
 
 ## Environment Variables
 
 | Variable | Description | Example |
 |---|---|---|
-| **PORT** | Port the server will listen on | `5000` |
-| **MONGO_URI** | MongoDB connection string | `mongodb+srv://user:pass@cluster.mongodb.net/db?retryWrites=true&w=majority` |
-| **JWT_SECRET** | Secret used to sign JWT tokens – at least 32 characters | `mycomplexsecret1234567890` |
-| **GEMINI_API_KEY** | API key for Google Gemini (AI generation) | `AIzaSy...` |
-| **CORS_ORIGIN** | Comma‑separated list of allowed origins for CORS | `https://mydomain.com,http://localhost:5173` |
-| **RATE_LIMIT_WINDOW_MS** | Time window for rate limiting (ms) | `900000` (15 min) |
-| **RATE_LIMIT_MAX_REQUESTS** | Max requests per window per IP | `100` |
-| **EMAIL_...** | Email service configuration (future use) |
-| **FEATURE_FLAGS** | Enable/disable optional features |
+| `PORT` | Port the server listens on | `5000` |
+| `MONGO_URI` | MongoDB connection string | `mongodb+srv://user:pass@cluster.mongodb.net/ai-ebook-generator?retryWrites=true&w=majority` |
+| `JWT_SECRET` | Secret key used to sign JWT tokens (min 32 chars) | `mycomplexsecret1234567890` |
+| `JWT_EXPIRE` | Expiry duration for JWT tokens | `30d` |
+| `GEMINI_API_KEY` | Google Gemini AI API key | `AIzaSy...` |
+| `CORS_ORIGIN` | Comma-separated list of allowed frontend origins | `http://localhost:5173,https://yourdomain.com` |
+| `RATE_LIMIT_WINDOW_MS` | Rate limit window in milliseconds | `900000` (15 minutes) |
+| `RATE_LIMIT_MAX_REQUESTS`| Max requests per IP per window | `100` |
+
+---
 
 ## API Reference
 
-### Authentication
+### Health Check
+
+#### Check Server Status
+```http
+GET /health
+```
+- **Response** (200):
+```json
+{
+  "status": "ok",
+  "timestamp": "2026-08-26T20:00:00.000Z"
+}
+```
+
+---
+
+### Authentication & Profile
 
 #### Register a New User
 ```http
@@ -79,9 +112,9 @@ Content-Type: application/json
 }
 ```
 - **Validations**:
-  - **Email** must be a valid email address and unique.
-  - **Password** must meet strength requirements (min 8 characters, include uppercase, number, special char).
-  - **Name** cannot be empty.
+  - `email`: Valid email format, unique in database.
+  - `password`: Min 8 chars, 1 uppercase, 1 lowercase, 1 digit, 1 special character.
+  - `name`: Min 2 chars, required.
 
 #### Login
 ```http
@@ -93,7 +126,7 @@ Content-Type: application/json
   "password": "StrongP@ssw0rd!"
 }
 ```
-- **Response** (200): Same as registration.
+- **Response** (200): Same format as registration with refreshed JWT token.
 
 #### Get User Profile
 ```http
@@ -121,42 +154,44 @@ Content-Type: application/json
   "password": "NewStrongP@ssw0rd!"
 }
 ```
-- **Response** (200): Updated user object with refreshed JWT token.
+- **Response** (200): Updated user object with new JWT token.
+
+---
 
 ### eBooks
 
-> All eBook routes are **protected** – the request must include an `Authorization: Bearer <token>` header.
+> All eBook endpoints require an `Authorization: Bearer <jwt-token>` header and enforce **strict user ownership** (IDOR prevention).
 
-#### Get All eBooks (User's Library)
+#### Get All User eBooks
 ```http
 GET /api/ebooks
 Authorization: Bearer <jwt-token>
 ```
-- **Response** (200): Array of eBook objects for the authenticated user.
+- **Response** (200): Array of eBook documents owned by the authenticated user.
 
-#### Get eBook By ID
-```http
-GET /api/ebooks/:id
-Authorization: Bearer <jwt-token>
-```
-- **Response** (200): Single eBook document.
-
-#### Create a New eBook
+#### Create eBook
 ```http
 POST /api/ebooks
 Authorization: Bearer <jwt-token>
 Content-Type: application/json
 
 {
-  "title": "Future of AI",
-  "description": "An in‑depth look at AI trends",
-  "coverColor": "bg-gradient-to-br from-blue-500 to-indigo-600"
+  "title": "Artificial Intelligence in 2026",
+  "description": "A comprehensive guide on generative models and autonomous agents.",
+  "coverColor": "bg-gradient-to-br from-blue-600 via-indigo-700 to-indigo-900"
 }
 ```
-- Immediately triggers background generation via Google Gemini.
-- **Status** initially `generating`.
+- **Response** (201): Newly created eBook document with status `'generating'`. Gemini AI content generation executes asynchronously in the background.
 
-#### Update an eBook
+#### Get Single eBook
+```http
+GET /api/ebooks/:id
+Authorization: Bearer <jwt-token>
+```
+- **Response** (200): eBook document with all chapter content.
+- Returns `404` if the eBook does not exist or belongs to another user.
+
+#### Update eBook
 ```http
 PUT /api/ebooks/:id
 Authorization: Bearer <jwt-token>
@@ -164,20 +199,30 @@ Content-Type: application/json
 
 {
   "title": "Updated Title",
-  "description": "New description",
-  "status": "draft",
-  "content": [...],
-  "totalPages": 12
+  "content": [
+    {
+      "page": 1,
+      "title": "Chapter 1: Overview",
+      "text": "Updated chapter body content..."
+    }
+  ]
 }
 ```
-- Allows editing title, description, content order, etc.
+- **Response** (200): Updated eBook document.
 
-#### Delete an eBook
+#### Delete eBook
 ```http
 DELETE /api/ebooks/:id
 Authorization: Bearer <jwt-token>
 ```
-- Permanently removes eBook.
+- **Response** (200):
+```json
+{
+  "message": "eBook removed"
+}
+```
+
+---
 
 ### Testimonials
 
@@ -185,90 +230,44 @@ Authorization: Bearer <jwt-token>
 ```http
 GET /api/testimonials
 ```
-- Returns list of public testimonials.
+- **Response** (200): Array of testimonial documents.
 
-#### Create Testimonial (Authenticated)
+#### Create Testimonial (Protected)
 ```http
 POST /api/testimonials
 Authorization: Bearer <jwt-token>
 Content-Type: application/json
 
 {
-  "text": "Loved the AI eBook creator!",
-  "role": "Writer"
+  "text": "This AI tool helped me publish my first technical eBook!",
+  "role": "Author & Engineer"
 }
 ```
-- `authorName` is automatically derived from the logged‑in user.
+- **Response** (201): Created testimonial.
 
-#### Delete Testimonial (Authenticated, Owner Only)
+#### Delete Testimonial (Protected, Owner Only)
 ```http
 DELETE /api/testimonials/:id
 Authorization: Bearer <jwt-token>
 ```
-- Only the user who created the testimonial can delete it.
-
-## Response Format
-
-Every endpoint returns JSON with either the resource data or an error message. Errors follow this shape:
+- **Response** (200):
 ```json
 {
-  "message": "Error description"
+  "message": "Testimonial removed"
 }
 ```
-- **HTTP status codes** are used appropriately (200, 201, 400, 401, 404, 500).
-
-## Middleware
-
-- **authMiddleware** – Verifies JWT and attaches `req.user`.
-- **errorHandler** – (Future) Centralized error handling returning consistent JSON.
-- **rateLimiter** – (Future) Rate limiting to mitigate abuse.
-- **cors** – Configured to allow only whitelisted origins.
-
-## Business Logic
-
-The current code embeds AI generation directly in the controller. In the upcoming refactor we will extract this into a **service** (`EbookService`) which will:
-- Validate input
-- Trigger AI generation via a background job queue (e.g., BullMQ)
-- Store generated content safely
-- Update eBook status
-
-## Security Considerations
-
-- All JWT secrets and API keys are stored in environment variables only.
-- Passwords are hashed with **bcryptjs** before storage.
-- Input validation (Joi/Zod) will be added to all routes.
-- CORS will be restricted to trusted origins.
-- Rate limiting will protect against brute‑force attacks.
-
-## Development Workflow
-
-1. **Install dependencies**
-   ```bash
-   cd backend
-   npm install
-   ```
-2. **Create `.env` file** based on `.env.example`.
-3. **Run development server**
-   ```bash
-   npm run dev   # uses nodemon for hot reload
-   ```
-4. **Run tests** (future – Jest will be set up)
-   ```bash
-   npm test
-   ```
-
-## Production Checklist
-
-- [ ] Use a process manager (PM2, Docker, or similar) to keep the server alive.
-- [ ] Enable **HTTPS** (TLS termination at load balancer or reverse proxy).
-- [ ] Set `NODE_ENV=production`.
-- [ ] Enable **rate limiting** and **CORS** restrictions.
-- [ ] Use a robust **logging** solution (Winston/Morgan) and forward logs to a centralized system.
-- [ ] Configure **monitoring** and health checks (`/health`).
-- [ ] Ensure **backup** and **restore** procedures for MongoDB.
-- [ ] Rotate and revoke JWT secrets periodically.
-- [ ] Harden container security (if Dockerized).
 
 ---
 
-*Feel free to extend or customize this documentation as the project evolves.*
+## Testing
+
+The backend includes 26 unit and integration tests using **Jest**, **Supertest**, and **MongoMemoryServer**:
+
+```bash
+npm test
+```
+
+### Test Suites:
+1. `tests/auth.test.js`: Registration validation, duplicate rejection, login, and `/profile` endpoints.
+2. `tests/ebook.test.js`: eBook creation, retrieval, updates, deletion, and cross-user IDOR isolation.
+3. `tests/validators.test.js`: Joi schema edge cases and prompt input sanitizers.
